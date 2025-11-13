@@ -30,7 +30,7 @@ const subscriptions: Array<{ remove: () => void }> = [];
 export function onCallStateChange(listener: (event: CallEvent) => void) {
   const subscription = callDetectorEmitter.addListener(
     'CallStateUpdate',
-    listener
+    listener as any
   );
   subscriptions.push(subscription);
 
