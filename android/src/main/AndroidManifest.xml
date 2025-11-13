@@ -1,10 +1,16 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-  <uses-permission android:name="android.permission.READ_PHONE_STATE" />
-  <uses-permission android:name="android.permission.READ_CALL_LOG" />
-  <uses-permission android:name="android.permission.READ_PHONE_NUMBERS" />
-  <application>
-    <service
-    android:name=".CallStateService"
-    android:exported="false" />
-  </application>
+
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.READ_CALL_LOG" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" /> // android 10+
+    <uses-permission android:name="android.permission.TIRAMISU_NOTIFICATION_DELEGATION" /> // android 10+
+
+    <application>
+        <service
+            android:name=".CallStateService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="phoneCall" />
+    </application>
 </manifest>

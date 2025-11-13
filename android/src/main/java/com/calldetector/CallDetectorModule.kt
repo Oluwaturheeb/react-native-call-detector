@@ -2,126 +2,88 @@ package com.calldetector
 
 import android.app.Activity
 import android.app.Application
-import android.content.Context
-import android.os.Build
+import android.content.*
 import android.os.Bundle
-import android.telephony.TelephonyCallback
 import android.telephony.TelephonyManager
+import android.util.Log
 import com.facebook.react.bridge.*
 import com.facebook.react.module.annotations.ReactModule
 import com.facebook.react.modules.core.DeviceEventManagerModule
-import android.content.Intent
-import android.content.IntentFilter
-import android.content.BroadcastReceiver
+import org.json.JSONObject
 
 @ReactModule(name = CallDetectorModule.NAME)
 class CallDetectorModule(reactContext: ReactApplicationContext) :
-        ReactContextBaseJavaModule(reactContext), Application.ActivityLifecycleCallbacks {
+    ReactContextBaseJavaModule(reactContext), Application.ActivityLifecycleCallbacks {
 
-  companion object {
-    const val NAME = "CallDetectorModule"
-  }
+    companion object { const val NAME = "CallDetector" }
 
-  private var telephonyManager: TelephonyManager? = null
-  private var activity: Activity? = null
-  private var wasAppInOffHook = false
-  private var wasAppInRinging = false
+    override fun getName() = NAME
 
-  private val callStateListener =
-          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            object : TelephonyCallback(), TelephonyCallback.CallStateListener {
-              override fun onCallStateChanged(state: Int) {
-                handleCallState(state, null)
-              }
-            }
-          } else null
-
-  override fun getName() = NAME
-
-  @ReactMethod
-  fun startListener() {
-    val context = reactApplicationContext
-    val intent = Intent(context, CallStateService::class.java)
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-      context.startForegroundService(intent)
-    } else {
-      context.startService(intent)
-    }
-  }
-
-  @ReactMethod
-  fun stopListener() {
-    val context = reactApplicationContext
-    val intent = Intent(context, CallStateService::class.java)
-    context.stopService(intent)
-  }
-
-  private fun handleCallState(state: Int, phoneNumber: String?) {
-    val emitter =
-            reactApplicationContext.getJSModule(
-                    DeviceEventManagerModule.RCTDeviceEventEmitter::class.java
-            )
-    when (state) {
-      TelephonyManager.CALL_STATE_IDLE -> {
-        when {
-          wasAppInOffHook ->
-                  emitter.emit(
-                          "CallStateUpdate",
-                          mapOf("state" to "Disconnected", "number" to phoneNumber)
-                  )
-          wasAppInRinging ->
-                  emitter.emit(
-                          "CallStateUpdate",
-                          mapOf("state" to "Missed", "number" to phoneNumber)
-                  )
+    @ReactMethod
+    fun startListener() {
+        val intent = Intent(reactApplicationContext, CallStateService::class.java)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            reactApplicationContext.startForegroundService(intent)
+        } else {
+            reactApplicationContext.startService(intent)
         }
-        wasAppInOffHook = false
-        wasAppInRinging = false
-      }
-      TelephonyManager.CALL_STATE_OFFHOOK -> {
-        wasAppInOffHook = true
-        emitter.emit("CallStateUpdate", mapOf("state" to "Offhook", "number" to phoneNumber))
-      }
-      TelephonyManager.CALL_STATE_RINGING -> {
-        wasAppInRinging = true
-        emitter.emit("CallStateUpdate", mapOf("state" to "Incoming", "number" to phoneNumber))
-      }
     }
-  }
 
-  // Activity lifecycle callbacks
-  override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
-  override fun onActivityStarted(activity: Activity) {}
-  override fun onActivityResumed(activity: Activity) {}
-  override fun onActivityPaused(activity: Activity) {}
-  override fun onActivityStopped(activity: Activity) {}
-  override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
-  override fun onActivityDestroyed(activity: Activity) {}
+    @ReactMethod
+    fun stopListener() {
+        val intent = Intent(reactApplicationContext, CallStateService::class.java)
+        reactApplicationContext.stopService(intent)
+    }
 
-  override fun getConstants(): Map<String, Any> =
-          mapOf(
-                  "Incoming" to "Incoming",
-                  "Offhook" to "Offhook",
-                  "Disconnected" to "Disconnected",
-                  "Missed" to "Missed"
-          )
+    private val callReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            try {
+                val state = intent?.getIntExtra("state", TelephonyManager.CALL_STATE_IDLE) ?: return
+                val jsonStr = intent.getStringExtra("callData")
+                val callDataMap = Arguments.createMap()
+                if (!jsonStr.isNullOrEmpty()) {
+                    val json = JSONObject(jsonStr)
+                    json.keys().forEach { key -> callDataMap.putString(key, json.optString(key)) }
+                }
 
-  private val callReceiver =
-          object : BroadcastReceiver() {
-            override fun onReceive(context: Context?, intent: Intent?) {
-              val state = intent?.getIntExtra("state", TelephonyManager.CALL_STATE_IDLE) ?: return
-              handleCallState(state, null)
-            }
-          }
+                val event = Arguments.createMap()
+                event.putString("state", when (state) {
+                    TelephonyManager.CALL_STATE_RINGING -> "Incoming"
+                    TelephonyManager.CALL_STATE_OFFHOOK -> "Offhook"
+                    TelephonyManager.CALL_STATE_IDLE -> "Idle"
+                    else -> "Unknown"
+                })
+                event.putMap("call", callDataMap)
 
-  override fun initialize() {
+                reactApplicationContext
+                    .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+                    .emit("CallStateUpdate", event)
+
+            } catch (e: Exception) { Log.e("CallDetectorModule", "BroadcastReceiver error", e) }
+        }
+    }
+
+    override fun initialize() {
     super.initialize()
     val filter = IntentFilter("CALL_STATE_UPDATE")
-    reactApplicationContext.registerReceiver(callReceiver, filter)
-  }
+    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+        reactApplicationContext.applicationContext.registerReceiver(callReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+    } else {
+        reactApplicationContext.applicationContext.registerReceiver(callReceiver, filter)
+    }
+}
 
-  override fun onCatalystInstanceDestroy() {
-    super.onCatalystInstanceDestroy()
-    reactApplicationContext.unregisterReceiver(callReceiver)
-  }
+    override fun onCatalystInstanceDestroy() {
+        super.onCatalystInstanceDestroy()
+        try { reactApplicationContext.unregisterReceiver(callReceiver) } catch (_: Exception) {}
+    }
+
+    // Lifecycle stubs
+    override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
+    override fun onActivityStarted(activity: Activity) {}
+    override fun onActivityResumed(activity: Activity) {}
+    override fun onActivityPaused(activity: Activity) {}
+    override fun onActivityStopped(activity: Activity) {}
+    override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
+    override fun onActivityDestroyed(activity: Activity) {}
 }

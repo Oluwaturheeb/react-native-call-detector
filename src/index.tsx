@@ -1,64 +1,61 @@
-// CallDetector.ts
 import { NativeModules, NativeEventEmitter } from 'react-native';
 
-const { CallDetectorModule } = NativeModules;
+const { CallDetector } = NativeModules;
 
-export type CallState = 'Incoming' | 'Offhook' | 'Disconnected' | 'Missed';
+// Event emitter for native updates
+const callDetectorEmitter = new NativeEventEmitter(CallDetector);
 
-export interface CallStateEvent {
-  state: CallState;
-  number: string | null;
+export type CallState = 'Incoming' | 'Offhook' | 'Idle' | 'Unknown';
+
+export interface CallData {
+  number: string;
+  name?: string;
+  type?: 'INCOMING' | 'OUTGOING' | 'MISSED' | 'REJECTED' | 'UNKNOWN';
+  date?: string;
+  duration?: string;
 }
 
-// Create a typed event emitter
-const emitter = new NativeEventEmitter(CallDetectorModule);
+export interface CallEvent {
+  state: CallState;
+  call: CallData;
+}
 
-// Type-safe subscription object
-type Listener = { remove: () => void };
-let listener: Listener | null = null;
+// Store active subscriptions
+const subscriptions: Array<{ remove: () => void }> = [];
 
 /**
- * Start listening for call state changes.
+ * Subscribe to call state updates
+ * Returns an unsubscribe function
+ */
+export function onCallStateChange(listener: (event: CallEvent) => void) {
+  const subscription = callDetectorEmitter.addListener(
+    'CallStateUpdate',
+    listener
+  );
+  subscriptions.push(subscription);
+
+  return () => {
+    subscription.remove();
+    const index = subscriptions.indexOf(subscription);
+    if (index > -1) subscriptions.splice(index, 1);
+  };
+}
+
+/**
+ * Start the native call detector
+ * No parameters needed; uses app name and icon internally
  */
 export function start() {
-  CallDetectorModule.startListener();
+  CallDetector.startListener();
 }
 
 /**
- * Stop listening for call state changes.
+ * Stop the native call detector and remove all listeners
  */
 export function stop() {
-  CallDetectorModule.stopListener();
-  listener?.remove();
-  listener = null;
+  CallDetector.stopListener();
+  subscriptions.forEach((sub) => sub.remove());
+  subscriptions.length = 0;
 }
 
-/**
- * Subscribe to call state changes.
- * Returns an unsubscribe function.
- */
-export function onChange(
-  callback: (event: CallStateEvent) => void
-): () => void {
-  // Wrap the callback to enforce type
-  listener = emitter.addListener('CallStateUpdate', (event: any) => {
-    callback(event as CallStateEvent);
-  });
-
-  return () => listener?.remove();
-}
-
-export const CallStates: Record<CallState, CallState> =
-  CallDetectorModule.getConstants?.() ?? {
-    Incoming: 'Incoming',
-    Offhook: 'Offhook',
-    Disconnected: 'Disconnected',
-    Missed: 'Missed',
-  };
-
-export default {
-  start,
-  stop,
-  onChange,
-  CallStates,
-};
+// transaction spool by request id
