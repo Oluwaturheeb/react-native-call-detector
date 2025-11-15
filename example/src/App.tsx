@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Text, View, StyleSheet } from 'react-native';
-import * as CallDetector from 'react-native-call-detector';
+import * as CallDetector from '@softtee/react-native-call-detector';
 import { PermissionsAndroid } from 'react-native';
 
 export default function App() {

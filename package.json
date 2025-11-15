@@ -1,7 +1,6 @@
 {
-  "name": "@bestTee/react-native-call-detector",
+  "name": "@softtee/react-native-call-detector",
   "version": "1.0.0",
-  "private": false,
   "description": "This library let you detector call states in your react-native/expo application",
   "main": "./lib/module/index.js",
   "types": "./lib/typescript/src/index.d.ts",
@@ -33,7 +32,7 @@
     "!**/.*"
   ],
   "scripts": {
-    "example": "yarn workspace react-native-call-detector-example",
+    "example": "yarn workspace @bestTee/react-native-call-detector-example",
     "test": "jest",
     "typecheck": "tsc",
     "lint": "eslint \"**/*.{js,ts,tsx}\"",
@@ -43,8 +42,9 @@
   },
   "keywords": [
     "react-native",
-    "ios",
-    "android"
+    "android",
+    "calldetector",
+    "call detector"
   ],
   "repository": {
     "type": "git",
