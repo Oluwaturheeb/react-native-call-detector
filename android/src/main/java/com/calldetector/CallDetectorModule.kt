@@ -38,7 +38,7 @@ class CallDetectorModule(reactContext: ReactApplicationContext) :
     private val callReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             try {
-                val state = intent?.getIntExtra("state", TelephonyManager.CALL_STATE_IDLE) ?: return
+                val stateString = intent?.getStringExtra("state") ?: return
                 val jsonStr = intent.getStringExtra("callData")
                 val callDataMap = Arguments.createMap()
                 if (!jsonStr.isNullOrEmpty()) {
@@ -47,12 +47,7 @@ class CallDetectorModule(reactContext: ReactApplicationContext) :
                 }
 
                 val event = Arguments.createMap()
-                event.putString("state", when (state) {
-                    TelephonyManager.CALL_STATE_RINGING -> "Incoming"
-                    TelephonyManager.CALL_STATE_OFFHOOK -> "Offhook"
-                    TelephonyManager.CALL_STATE_IDLE -> "Idle"
-                    else -> "Unknown"
-                })
+                event.putString("state", stateString)
                 event.putMap("call", callDataMap)
 
                 reactApplicationContext

@@ -3,8 +3,8 @@
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.READ_CALL_LOG" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" /> // android 10+
-    <uses-permission android:name="android.permission.TIRAMISU_NOTIFICATION_DELEGATION" /> // android 10+
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" />
+    <uses-permission android:name="android.permission.TIRAMISU_NOTIFICATION_DELEGATION" />
 
     <application>
         <service

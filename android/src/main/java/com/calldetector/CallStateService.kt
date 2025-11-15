@@ -25,6 +25,8 @@ import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.Executor // ADDED Import for Executor
 import org.json.JSONObject
+import android.database.ContentObserver
+import com.facebook.react.bridge.WritableMap
 
 class CallStateService : Service() {
 
@@ -32,7 +34,7 @@ class CallStateService : Service() {
   private var lastState: Int = TelephonyManager.CALL_STATE_IDLE
   private var currentNumber: String? = null
   private lateinit var mainExecutor: Executor // ADDED Executor field
-
+private lateinit var callLogObserver: ContentObserver
   // Use nullable properties for the listeners as we did before
   private var newApiCallListener: TelephonyCallback? = null
   @Suppress("DEPRECATION") private var legacyListener: PhoneStateListener? = null
@@ -61,6 +63,27 @@ class CallStateService : Service() {
                 }
               }
     }
+
+    callLogObserver = object : ContentObserver(null) {
+        override fun onChange(selfChange: Boolean) {
+            super.onChange(selfChange)
+            val lastCall = fetchLastCallData(null)
+            val type = lastCall["type"]
+
+            when (type) {
+                "INCOMING" -> sendEvent("Disconnected", lastCall)
+                "OUTGOING" -> sendEvent("Disconnected", lastCall)
+                "MISSED"   -> sendEvent("Missed", lastCall)
+                "REJECTED" -> sendEvent("Rejected", lastCall)
+            }
+        }
+    }
+
+    contentResolver.registerContentObserver(
+        CallLog.Calls.CONTENT_URI,
+        true,
+        callLogObserver
+    )
   }
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -97,49 +120,53 @@ class CallStateService : Service() {
                     .build()
 
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-      // FIX 2: ServiceInfo is now imported and recognized
       startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL)
     } else {
       startForeground(1, notification)
     }
   }
 
-  // REMOVED: callListener property definition (was using the old signature)
-
-  // REMOVED & MERGED: callCallback definition. The logic is now inside onCreate's
-  // newApiCallListener setup.
-
   private fun handleCallStateChange(state: Int, number: String?) {
-    // ... (Logic remains the same, this function is fine)
     when (state) {
-      TelephonyManager.CALL_STATE_RINGING -> {
-        currentNumber = number
-        sendEvent("Incoming", createCallMap(number, "INCOMING"))
-      }
-      TelephonyManager.CALL_STATE_OFFHOOK -> {
-        // We don't necessarily get the number here for outgoing calls initially
-        // The currentNumber might be set from the outgoing call intent in RN JS if passed
-        sendEvent("Offhook", createCallMap(number, "OUTGOING"))
-      }
-      TelephonyManager.CALL_STATE_IDLE -> {
-        // Trigger when a call actually ended
-        if (lastState == TelephonyManager.CALL_STATE_OFFHOOK) {
-          val lastCall = fetchLastCallData(currentNumber)
-          sendEvent("Disconnected", lastCall)
+        TelephonyManager.CALL_STATE_RINGING -> {
+            currentNumber = number
+            sendEvent("Incoming", createCallMap(number, "INCOMING"))
         }
-      }
+        TelephonyManager.CALL_STATE_OFFHOOK -> {
+            sendEvent("Offhook", createCallMap(number, "OUTGOING"))
+        }
+        TelephonyManager.CALL_STATE_IDLE -> {
+            android.os.Handler(android.os.Looper.getMainLooper())
+                .postDelayed(
+                    {
+                        if (lastState == TelephonyManager.CALL_STATE_OFFHOOK) {
+                            val lastCall = fetchLastCallData(currentNumber)
+                            sendEvent("Disconnected", lastCall)
+                        } else if (lastState == TelephonyManager.CALL_STATE_RINGING) {
+                            val lastCall = fetchLastCallData(currentNumber)
+                            val callType = lastCall["type"] as? String
+                            when (callType) {
+                                "MISSED" -> sendEvent("Missed", lastCall)
+                                "REJECTED" -> sendEvent("Rejected", lastCall)
+                                else -> sendEvent("Disconnected", lastCall)
+                            }
+                        }
+                    },
+                    600
+                )
+        }
     }
-
     lastState = state
-  }
+}
 
   private fun createCallMap(number: String?, type: String): Map<String, Any?> {
     val call = HashMap<String, Any?>()
     call["number"] = number ?: ""
     call["type"] = type
+    call["name"] = ""
     call["date"] = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
     return call
-  }
+}
 
   private fun sendEvent(state: String, data: Map<String, Any?>) {
     val reactApp = application as? ReactApplication
@@ -176,53 +203,58 @@ class CallStateService : Service() {
   }
 
   private fun fetchLastCallData(number: String?): Map<String, Any?> {
-    // ... (Logic remains the same, assuming READ_CALL_LOG permission is granted)
     val resolver: ContentResolver = contentResolver
     val cursor: Cursor? =
-            resolver.query(
-                    CallLog.Calls.CONTENT_URI,
-                    null,
-                    null,
-                    null,
-                    CallLog.Calls.DATE + " DESC LIMIT 1"
-            )
+        resolver.query(
+            CallLog.Calls.CONTENT_URI,
+            arrayOf(
+                CallLog.Calls.CACHED_NAME,
+                CallLog.Calls.NUMBER,
+                CallLog.Calls.TYPE,
+                CallLog.Calls.DATE,
+                CallLog.Calls.DURATION
+            ),
+            null,
+            null,
+            CallLog.Calls.DATE + " DESC"
+        )
 
     val result = HashMap<String, Any?>()
 
     cursor?.use {
-      if (it.moveToFirst()) {
-        val nameIndex = it.getColumnIndexOrThrow(CallLog.Calls.CACHED_NAME)
-        val numberIndex = it.getColumnIndexOrThrow(CallLog.Calls.NUMBER)
-        val typeIndex = it.getColumnIndexOrThrow(CallLog.Calls.TYPE)
-        val dateIndex = it.getColumnIndexOrThrow(CallLog.Calls.DATE)
-        val durationIndex = it.getColumnIndexOrThrow(CallLog.Calls.DURATION)
+        if (it.moveToFirst()) {
+            val nameIndex = it.getColumnIndexOrThrow(CallLog.Calls.CACHED_NAME)
+            val numberIndex = it.getColumnIndexOrThrow(CallLog.Calls.NUMBER)
+            val typeIndex = it.getColumnIndexOrThrow(CallLog.Calls.TYPE)
+            val dateIndex = it.getColumnIndexOrThrow(CallLog.Calls.DATE)
+            val durationIndex = it.getColumnIndexOrThrow(CallLog.Calls.DURATION)
 
-        val name = it.getString(nameIndex)
-        val phoneNumber = it.getString(numberIndex)
-        val typeCode = it.getInt(typeIndex)
-        val date = it.getLong(dateIndex)
-        val duration = it.getInt(durationIndex)
+            val name = it.getString(nameIndex)
+            val phoneNumber = it.getString(numberIndex)
+            val typeCode = it.getInt(typeIndex)
+            val date = it.getLong(dateIndex)
+            val duration = it.getInt(durationIndex)
 
-        val type =
+            val type =
                 when (typeCode) {
-                  CallLog.Calls.INCOMING_TYPE -> "INCOMING"
-                  CallLog.Calls.OUTGOING_TYPE -> "OUTGOING"
-                  CallLog.Calls.MISSED_TYPE -> "MISSED"
-                  CallLog.Calls.REJECTED_TYPE -> "REJECTED"
-                  else -> "UNKNOWN"
+                    CallLog.Calls.INCOMING_TYPE -> if (duration == 0) "MISSED" else "INCOMING"
+                    CallLog.Calls.OUTGOING_TYPE -> "OUTGOING"
+                    CallLog.Calls.MISSED_TYPE -> "MISSED"
+                    CallLog.Calls.REJECTED_TYPE -> "REJECTED"
+                    else -> "UNKNOWN"
                 }
 
-        result["number"] = phoneNumber ?: number ?: ""
-        result["name"] = name ?: ""
-        result["type"] = type
-        result["date"] =
+            result["name"] = name ?: ""
+            result["number"] = phoneNumber ?: number ?: ""
+            result["type"] = type
+            result["date"] =
                 SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(date))
-        result["duration"] = duration.toString()
-      }
+            result["duration"] = duration.toString()
+        }
     }
 
     return result
-  }
+}
 
   override fun onDestroy() {
     super.onDestroy()

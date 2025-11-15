@@ -6,20 +6,23 @@ import { PermissionsAndroid } from 'react-native';
 export default function App() {
   useEffect(() => {
     (async () => {
-      await PermissionsAndroid.requestMultiple([
+      let perms = await PermissionsAndroid.requestMultiple([
         PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE,
         PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE,
         PermissionsAndroid.PERMISSIONS.READ_CALL_LOG,
         PermissionsAndroid.PERMISSIONS.READ_PHONE_NUMBERS,
       ]);
+
+      if (
+        perms['android.permission.READ_CALL_LOG'] == 'granted' &&
+        perms['android.permission.READ_PHONE_STATE'] == 'granted'
+      ) {
+        CallDetector.start();
+        CallDetector.onCallStateChange(({ state, call }) => {
+          console.log(state, call);
+        });
+      }
     })();
-
-    CallDetector.start();
-    console.log('helloe!');
-
-    CallDetector.onCallStateChange(({ state, call }) => {
-      console.log(state, call);
-    });
   }, []);
 
   return (
