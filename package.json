@@ -1,7 +1,8 @@
 {
-  "name": "react-native-call-detector",
+  "name": "@bestTee/react-native-call-detector",
   "version": "1.0.0",
-  "description": "This library is based off of @huddle01@react-native-call-detection for detecting call states",
+  "private": false,
+  "description": "This library let you detector call states in your react-native/expo application",
   "main": "./lib/module/index.js",
   "types": "./lib/typescript/src/index.d.ts",
   "exports": {
