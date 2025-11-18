@@ -5,7 +5,7 @@ const { CallDetector } = NativeModules;
 // Event emitter for native updates
 const callDetectorEmitter = new NativeEventEmitter(CallDetector);
 
-export type CallState = 'Incoming' | 'Offhook' | 'Idle' | 'Unknown';
+export type CallState = 'Incoming' | 'Outgoing' | 'Missed' | 'Disconnected' | 'Offhook' | 'Idle' | 'Unknown';
 
 export interface CallData {
   number: string;
